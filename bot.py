@@ -3,6 +3,7 @@ import random
 
 import discord
 from dotenv import load_dotenv
+from discord.ext import commands
 
 import requests
 
@@ -13,6 +14,8 @@ from icebreakers import icebreakers
 load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
 SERVER = os.getenv('DISCORD_SERVER')
+# need the bot token from the discord developer panel stored in the .env file
+#
 
 # URLs
 DAD_JOKES_URL = 'https://icanhazdadjoke.com/'
@@ -22,45 +25,59 @@ intents = discord.Intents.default()
 intents.message_content = True
 
 # CLIENT
-client = discord.Client(intents=intents)
+bot = commands.Bot(intents=intents, command_prefix='!')
+# intents states privileges that the bot has (for example getting message content)
+# command_prefix determines the prefix the bot responds to (so for example typing !standup with the ! as a prefix)
 
-# EVENTS
+# HELPERS
 
-@client.event
+def parse_dad_joke(dad_joke_dict):
+    preface = random.choice(dad_joke_prefaces)
+    random_emoji = random.choice(["😂", "🤣", "🤪", "😝", "😆", "", "", ""])
+    return f"{preface}\n`{dad_joke_dict['joke']}` {random_emoji}"
+
+# EVENTS / COMMANDS
+
+@bot.event
 async def on_ready():
-    print(f'---{client.user} has connected to Discord!---')
+    print(f'---{bot.user.name} has connected to Discord!---')
     # the discord.utils.get allows us to work with the guild named after the guild in the .env
     # guild is another name for the server
-    guild = discord.utils.get(client.guilds, name=SERVER)
+    guild = discord.utils.get(bot.guilds, name=SERVER)
     print(f"---[Connected to {guild.name} | id: {guild.id}]---")
-    # print(f"\nCurrent Members:")
-    # for member in guild.members:
-    #     print(f"--> {member.name}")
 
-@client.event
-async def on_message(message):
-    # print(f'---[New Message: "{message.content}"]---')
+@bot.command(name='standup')
+async def standup(ctx, arg=""):
+    print(arg)
+    question = random.choice(icebreakers)
+    response = f"Today's question:\n`{question}`"
+    await ctx.send(response)
 
-    # the two lines below allow the bot to ignore its own messages
-    if message.author == client.user:
-        return
-
-    if message.content == '!standup':
-        question = random.choice(icebreakers)
-        response = f"Today's question:\n{question}"
-        await message.channel.send(response)
-
-    if message.content == '!dadjoke':
-        headers = {"Accept": "application/json"}
+@bot.command(name='dadjoke')
+async def dadjoke(ctx, arg=""):
+    headers = {"Accept": "application/json"}
+    if arg == "":
         resp = requests.get("https://icanhazdadjoke.com/", headers=headers)
         dad_joke = resp.json()
         if dad_joke["status"] == 200:
-            preface = random.choice(dad_joke_prefaces)
-            response = f"{preface}\n{dad_joke['joke']}"
-            await message.channel.send(response)
+            response = parse_dad_joke(dad_joke)
+            await ctx.send(response)
         else:
-            response = "That didn't quite work..."
-            await message.channel.send(response)
+            response = "`404: Looks like I lost my book of jokes...`"
+            await ctx.send(response)
+    else:
+        resp = requests.get(f"https://icanhazdadjoke.com/search?term={arg}", headers=headers)
+        parsed_res = resp.json()
+        if parsed_res["status"] == 200:
+            if parsed_res["results"]:
+                rand_joke = random.choice(parsed_res["results"])
+                response = parse_dad_joke(rand_joke)
+                await ctx.send(response)
+            else:
+                response = "Sorry I couldn't think of a joke about that topic..."
+                await ctx.send(response)
+        else:
+            response = "`404: Looks like I lost my book of jokes...`"
+            await ctx.send(response)
 
-
-client.run(TOKEN)
+bot.run(TOKEN)
